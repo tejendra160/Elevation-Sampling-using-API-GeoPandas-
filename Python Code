@@ -1,0 +1,131 @@
+import geopandas as gpd
+import pandas as pd
+import requests
+import random
+import time
+import matplotlib.pyplot as plt
+from shapely.geometry import Point
+
+# --------------------------------------------------
+# 1. Input watershed shapefile
+# --------------------------------------------------
+watershed_path = r"Directory to your shapefile (I use watershed 22 shapefile"
+
+output_csv = r"C:\Users\tejen\Downloads\W22_elevation_points.csv"
+output_gpkg = r"C:\Users\tejen\Downloads\W22_elevation_points.gpkg"
+output_map = r"C:\Users\tejen\Downloads\W22_elevation_map.png"
+
+# Number of sample points
+n_points = 25
+
+# --------------------------------------------------
+# 2. Read watershed
+# --------------------------------------------------
+watershed = gpd.read_file(watershed_path)
+
+# Make sure geometry is valid
+watershed["geometry"] = watershed["geometry"].buffer(0)
+
+# Convert to WGS84 lat/lon for API
+watershed_wgs84 = watershed.to_crs(epsg=4326)
+
+# Merge all watershed polygons into one geometry
+watershed_geom = watershed_wgs84.unary_union
+
+# --------------------------------------------------
+# 3. Generate random points inside watershed
+# --------------------------------------------------
+minx, miny, maxx, maxy = watershed_geom.bounds
+
+points = []
+
+while len(points) < n_points:
+    lon = random.uniform(minx, maxx)
+    lat = random.uniform(miny, maxy)
+    point = Point(lon, lat)
+
+    if watershed_geom.contains(point):
+        points.append(point)
+
+points_gdf = gpd.GeoDataFrame(
+    geometry=points,
+    crs="EPSG:4326"
+)
+
+points_gdf["longitude"] = points_gdf.geometry.x
+points_gdf["latitude"] = points_gdf.geometry.y
+
+# --------------------------------------------------
+# 4. Function to get elevation from API
+# --------------------------------------------------
+def get_elevation(lat, lon):
+    url = "https://api.open-elevation.com/api/v1/lookup"
+
+    params = {
+        "locations": f"{lat},{lon}"
+    }
+
+    try:
+        response = requests.get(url, params=params, timeout=20)
+        response.raise_for_status()
+
+        data = response.json()
+        elevation = data["results"][0]["elevation"]
+
+        return elevation
+
+    except Exception as e:
+        print(f"API failed for {lat}, {lon}: {e}")
+        return None
+
+# --------------------------------------------------
+# 5. Request elevation for each point
+# --------------------------------------------------
+elevations = []
+
+for i, row in points_gdf.iterrows():
+    lat = row["latitude"]
+    lon = row["longitude"]
+
+    elevation = get_elevation(lat, lon)
+    elevations.append(elevation)
+
+    print(f"Point {i+1}: lat={lat:.5f}, lon={lon:.5f}, elevation={elevation} m")
+
+    # Small pause to avoid hitting API too fast
+    time.sleep(0.5)
+
+points_gdf["elevation_m"] = elevations
+
+# --------------------------------------------------
+# 6. Save output files
+# --------------------------------------------------
+points_gdf.to_csv(output_csv, index=False)
+points_gdf.to_file(output_gpkg, layer="W22_elevation_points", driver="GPKG")
+
+print("Saved CSV:", output_csv)
+print("Saved GeoPackage:", output_gpkg)
+
+# --------------------------------------------------
+# 7. Make a simple map
+# --------------------------------------------------
+fig, ax = plt.subplots(figsize=(8, 8))
+
+watershed_wgs84.boundary.plot(ax=ax, linewidth=1.5)
+
+points_gdf.plot(
+    ax=ax,
+    column="elevation_m",
+    legend=True,
+    markersize=60
+)
+
+ax.set_title("W22 Sample Points with API Elevation")
+ax.set_xlabel("Longitude")
+ax.set_ylabel("Latitude")
+
+plt.tight_layout()
+plt.savefig(output_map, dpi=300)
+plt.show()
+
+print("Saved map:", output_map)
