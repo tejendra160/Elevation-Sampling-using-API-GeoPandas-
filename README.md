@@ -18,19 +18,42 @@ Workflow Overview
 The project follows a step-by-step geospatial pipeline:
 
 Load Watershed Boundary
+
 Read shapefile using GeoPandas
+
 Ensure valid geometry
+
 Convert coordinate system to WGS84 (required for API)
+
+
 Generate Sample Points
+
 Create random points inside watershed boundary
+
 Ensure all points fall within the polygon
+
+
 API Integration
+
 Send latitude/longitude requests to elevation API
+
 Retrieve elevation (meters) for each point
+
+
 Data Storage
+
 Save results as:
+
 CSV (tabular data)
+
 GeoPackage (spatial data)
+
+
 Visualization
+
 Plot watershed boundary
+
+Overlay sampled points colored by elevation
+
+ boundary
 Overlay sampled points colored by elevation
